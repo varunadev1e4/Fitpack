@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import {
   getLevelInfo, getXPProgress, getXPToNext, displayStreak, weekProgress,
-  getMondayISO, getActiveSeason, getAvatarDisplay, MOODS
+  getMondayISO, getActiveSeason, getAvatarDisplay, MOODS, calcCorrelations
 } from '../lib/game'
 import ReactionBar from '../components/ReactionBar'
 import WeeklySummary from '../components/WeeklySummary'
@@ -190,6 +190,7 @@ export default function Dashboard() {
   const [milestones, setMilestones]   = useState([])
   const [pinnedPost, setPinnedPost]   = useState(null)
   const [weeklyGoals, setWeeklyGoals] = useState([])
+  const [correlations, setCorrelations] = useState([])
   const [showSpin, setShowSpin]       = useState(false)
   const [loading, setLoading]         = useState(true)
   const [goalsKey, setGoalsKey]       = useState(0)
@@ -206,9 +207,9 @@ export default function Dashboard() {
   async function load() {
     const [{ data: u }, { data: s }, { data: ci }, { data: ystd }] = await Promise.all([
       supabase.from('users').select('*').eq('id', user.id).single(),
-      supabase.from('streaks').select('*').eq('user_id', user.id).single(),
-      supabase.from('check_ins').select('*').eq('user_id', user.id).eq('date', today).single(),
-      supabase.from('check_ins').select('*').eq('user_id', user.id).eq('date', yesterday).single(),
+      supabase.from('streaks').select('*').eq('user_id', user.id).maybeSingle(),
+      supabase.from('check_ins').select('*').eq('user_id', user.id).eq('date', today).maybeSingle(),
+      supabase.from('check_ins').select('*').eq('user_id', user.id).eq('date', yesterday).maybeSingle(),
     ])
     setFullUser(u); setStreak(s); setTodayCi(ci); setYesterdayCi(ystd)
 
@@ -255,7 +256,7 @@ export default function Dashboard() {
       }
 
       // Squad health = % of all users who checked in this week
-      const { count: totalUsers } = await supabase.from('users').select('id', { count: 'exact' })
+      const { count: totalUsers } = await supabase.from('users').select('id', { count: 'exact', head: true })
       const activeUsers = new Set(weekXP.map(r => r.user_id)).size
       setSquadHealth(Math.round((activeUsers / (totalUsers ?? 1)) * 100))
     }
@@ -283,13 +284,15 @@ export default function Dashboard() {
     }
 
     // Pinned post
-    const { data: pp } = await supabase.from('squad_posts').select('*, users(username)').eq('pinned', true).order('created_at', { ascending: false }).limit(1).single()
+    const { data: pp } = await supabase.from('squad_posts').select('*, users(username)').eq('pinned', true).order('created_at', { ascending: false }).limit(1).maybeSingle()
     setPinnedPost(pp)
 
     // Weekly goals
     const { data: goals } = await supabase
       .from('weekly_goals').select('*, users(username, avatar_color)').eq('week_id', monday).order('created_at')
     setWeeklyGoals(goals ?? [])
+    const { data: recent } = await supabase.from('check_ins').select('*').eq('user_id', user.id).order('date', { ascending: false }).limit(45)
+    setCorrelations(calcCorrelations(recent ?? []).slice(0, 2))
 
     setLoading(false)
   }
@@ -419,6 +422,18 @@ export default function Dashboard() {
 
       {/* Weekly goals */}
       {!loading && <PublicGoals goals={weeklyGoals} userId={user.id} onSetGoal={() => setGoalsKey(k => k + 1)} />}
+
+      {!!correlations.length && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <h3 style={{ fontFamily: 'var(--font-d)', fontWeight: 800, fontSize: '1rem', marginBottom: 10 }}>🔗 Correlations</h3>
+          {correlations.map((c, i) => (
+            <div key={i} style={{ display: 'flex', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+              <span>{c.icon}</span>
+              <p style={{ color: 'var(--text-dim)', fontSize: '.82rem' }}>{c.insight}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Activity feed */}
       {loading ? <div className="spinner" /> : (
