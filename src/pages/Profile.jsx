@@ -634,7 +634,7 @@ export default function Profile() {
     async function load() {
       const [{ data:u }, { data:s }, { data:cis }] = await Promise.all([
         supabase.from('users').select('*').eq('id', user.id).single(),
-        supabase.from('streaks').select('*').eq('user_id', user.id).maybeSingle(),
+        supabase.from('streaks').select('*').eq('user_id', user.id).single(),
         supabase.from('check_ins').select('*').eq('user_id', user.id).order('date',{ascending:false}).limit(90),
       ])
       setFU(u); setStreak(s); setCIs(cis??[])

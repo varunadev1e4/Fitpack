@@ -13,7 +13,7 @@ export default function SpinWheel({ userId, onClose }) {
   const today = new Date().toISOString().slice(0, 10)
 
   useEffect(() => {
-    supabase.from('spin_results').select('*').eq('user_id', userId).eq('date', today).maybeSingle()
+    supabase.from('spin_results').select('*').eq('user_id', userId).eq('date', today).single()
       .then(({ data }) => {
         if (data) { setExisting(data); setPhase('already') }
       })
