@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import {
-  getLevelInfo, getXPProgress, getXPToNext, displayStreak, weekProgress,
+  getLevelInfo, getXPProgress, getXPToNext, displayStreak, displayDayStreak, weekProgress,
   getMondayISO, getActiveSeason, getAvatarDisplay, MOODS, calcCorrelations
 } from '../lib/game'
 import ReactionBar from '../components/ReactionBar'
@@ -384,7 +384,7 @@ export default function Dashboard() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <WeekDots count={wdots} />
           <span style={{ fontFamily: 'var(--font-d)', fontWeight: 800, color: 'var(--fire)', fontSize: '1rem' }}>
-            🔥 {displayStreak(streak)}w
+            🔥 {displayDayStreak(streak)}d · {displayStreak(streak)}w
           </span>
         </div>
       </div>

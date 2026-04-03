@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { getLevelInfo, getXPProgress, displayStreak, weekProgress, calcConsistency, getAvatarDisplay } from '../lib/game'
+import { getLevelInfo, getXPProgress, displayStreak, displayDayStreak, calcConsistency, getAvatarDisplay } from '../lib/game'
 import CalendarHeatmap from '../components/CalendarHeatmap'
 
 export default function PublicProfile() {
@@ -80,7 +80,7 @@ export default function PublicProfile() {
       <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
         {[
           { val: displayStreak(streak), label: '🔥 Week streak', color: 'var(--fire)' },
-          { val: streak?.longest_streak ?? 0, label: '🏅 Best', color: 'var(--gold)' },
+          { val: displayDayStreak(streak), label: '📅 Day streak', color: 'var(--gold)' },
           { val: `${consistency}%`, label: '📊 Consistency', color: 'var(--accent)' },
         ].map(s => (
           <div key={s.label} className="card" style={{ flex: 1, textAlign: 'center', padding: '14px 8px' }}>

@@ -3,7 +3,7 @@ import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import {
   getLevelInfo, getXPProgress, getXPToNext, LEVELS,
-  calcConsistency, weakestMetric, displayStreak, weekProgress,
+  calcConsistency, weakestMetric, displayStreak, displayDayStreak, weekProgress,
   calcCorrelations, calcBestWeek, calcJunkStreak,
   AVATAR_STYLES, AVATAR_COLORS, getAvatarDisplay, getActiveSeason
 } from '../lib/game'
@@ -45,7 +45,7 @@ function StatsTab({ user, fullUser, streak, stats, checkIns }) {
       <div style={{ display:'flex', gap:10, marginBottom:12 }}>
         {[
           { val: displayStreak(streak), label:'🔥 Week Streak', color:'var(--fire)' },
-          { val: streak?.longest_streak??0, label:'🏅 Best', color:'var(--gold)' },
+          { val: displayDayStreak(streak), label:'📅 Day Streak', color:'var(--gold)' },
           { val: `${weekProgress(streak)}/3`, label:'This Week', color:'var(--accent)' },
         ].map(s => (
           <div key={s.label} className="card" style={{ flex:1, textAlign:'center', padding:'14px 8px' }}>
