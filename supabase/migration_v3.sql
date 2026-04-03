@@ -17,6 +17,7 @@ alter table users     add column if not exists public_goal       text    default
 alter table users     add column if not exists public_goal_date  date    default null;
 alter table users     add column if not exists accountability_buddy_id uuid references users(id) on delete set null;
 alter table users     add column if not exists team_change_tokens integer default 0;
+create unique index if not exists users_accountability_buddy_unique on users(accountability_buddy_id) where accountability_buddy_id is not null;
 
 -- Squad milestones (collective)
 create table if not exists squad_milestones (

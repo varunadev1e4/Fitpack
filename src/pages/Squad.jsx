@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import { getLevelInfo } from '../lib/game'
@@ -31,7 +32,7 @@ function Delta({ v }) {
 // ── Leaderboard Tab ────────────────────────────────
 const LB_TABS = ['Weekly', 'Monthly', 'All Time', 'Streaks']
 
-function LeaderboardTab({ userId }) {
+function LeaderboardTab({ userId, navigate }) {
   const [tab, setTab]     = useState(0)
   const [data, setData]   = useState([])
   const [prev, setPrev]   = useState([])
@@ -111,9 +112,13 @@ function LeaderboardTab({ userId }) {
             borderRadius:14, marginBottom:6,
           }}>
             <div style={{width:32,display:'flex',justifyContent:'center'}}><RankIcon rank={rank} /></div>
-            <div className="avatar" style={{background:entry.avatar_color??'#00FF87'}}>{entry.username?.charAt(0).toUpperCase()}</div>
+            <button onClick={() => navigate(`/u/${entry.username}`)}>
+              <div className="avatar" style={{background:entry.avatar_color??'#00FF87'}}>{entry.username?.charAt(0).toUpperCase()}</div>
+            </button>
             <div style={{flex:1}}>
-              <div style={{fontWeight:700,fontSize:'.95rem'}}>{entry.username} {isMe && <span style={{color:'var(--accent)',fontSize:'.72rem'}}>(you)</span>}</div>
+              <div style={{fontWeight:700,fontSize:'.95rem'}}>
+                <button onClick={() => navigate(`/u/${entry.username}`)} style={{ color:'inherit' }}>{entry.username}</button> {isMe && <span style={{color:'var(--accent)',fontSize:'.72rem'}}>(you)</span>}
+              </div>
               <div style={{color:'var(--text-dim)',fontSize:'.72rem'}}>{lvl.emoji} {lvl.name}</div>
             </div>
             <div style={{textAlign:'right',display:'flex',flexDirection:'column',alignItems:'flex-end',gap:2}}>
@@ -131,7 +136,7 @@ function LeaderboardTab({ userId }) {
 }
 
 // ── Teams Tab ──────────────────────────────────────
-function TeamsTab({ userId }) {
+function TeamsTab({ userId, navigate }) {
   const [teams, setTeams]   = useState([])
   const [myTeam, setMyTeam] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -331,6 +336,7 @@ function TrashTalkTab({ userId, username, avatarColor }) {
 // ── Main ────────────────────────────────────────────
 export default function Squad() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [tab, setTab] = useState(0)
 
   return (
@@ -341,8 +347,8 @@ export default function Squad() {
       </div>
 
       <div className="fade-in">
-        {tab === 0 && <LeaderboardTab userId={user.id} />}
-        {tab === 1 && <TeamsTab userId={user.id} />}
+        {tab === 0 && <LeaderboardTab userId={user.id} navigate={navigate} />}
+        {tab === 1 && <TeamsTab userId={user.id} navigate={navigate} />}
         {tab === 2 && <TrashTalkTab userId={user.id} username={user.username} avatarColor={user.avatar_color} />}
       </div>
     </div>
