@@ -220,7 +220,7 @@ export default function Dashboard() {
     // Feed
     const feedQuery = supabase
       .from('check_ins')
-      .select('*, users(id, username, avatar_color, avatar_style), shoutout_users:users!check_ins_shoutout_to_fkey(username)')
+      .select('*')
       .order('created_at', { ascending: false })
       .limit(20)
 
@@ -229,7 +229,21 @@ export default function Dashboard() {
       : await feedQuery
 
     if (feedRaw) {
-      setFeed(feedRaw)
+      const userIds = [...new Set(feedRaw.map(c => c.user_id).filter(Boolean))]
+      const shoutoutIds = [...new Set(feedRaw.map(c => c.shoutout_to).filter(Boolean))]
+      const allProfileIds = [...new Set([...userIds, ...shoutoutIds])]
+      const { data: profiles } = allProfileIds.length
+        ? await supabase.from('users').select('id, username, avatar_color, avatar_style').in('id', allProfileIds)
+        : { data: [] }
+      const profileMap = Object.fromEntries((profiles ?? []).map(p => [p.id, p]))
+
+      const hydratedFeed = feedRaw.map(ci => ({
+        ...ci,
+        users: profileMap[ci.user_id] ?? null,
+        shoutout_users: profileMap[ci.shoutout_to] ? { username: profileMap[ci.shoutout_to].username } : null,
+      }))
+
+      setFeed(hydratedFeed)
       const ids = feedRaw.map(c => c.id)
       if (ids.length) {
         const { data: rxns } = await supabase.from('reactions').select('*').in('check_in_id', ids)
@@ -241,7 +255,7 @@ export default function Dashboard() {
 
     // Weekly XP for nemesis + crown + squad health
     const weekXPQuery = supabase
-      .from('check_ins').select('user_id, xp_earned, users(username, avatar_color)').gte('date', monday)
+      .from('check_ins').select('user_id, xp_earned').gte('date', monday)
     const { data: weekXP } = teamMemberIds.length
       ? await weekXPQuery.in('user_id', teamMemberIds)
       : await weekXPQuery
@@ -251,18 +265,23 @@ export default function Dashboard() {
       weekXP.forEach(r => { totals[r.user_id] = (totals[r.user_id] || 0) + r.xp_earned })
       const myXP   = totals[user.id] || 0
       const sorted = Object.entries(totals).sort((a, b) => b[1] - a[1])
+      const rankedIds = sorted.map(([uid]) => uid).filter(Boolean)
+      const { data: rankedUsers } = rankedIds.length
+        ? await supabase.from('users').select('id, username, avatar_color').in('id', rankedIds)
+        : { data: [] }
+      const rankedUserMap = Object.fromEntries((rankedUsers ?? []).map(u => [u.id, u]))
 
       // Nemesis
       const above = sorted.filter(([uid, xp]) => uid !== user.id && xp > myXP)[0]
       if (above) {
-        const aboveUser = weekXP.find(r => r.user_id === above[0])?.users
+        const aboveUser = rankedUserMap[above[0]]
         if (aboveUser) setNudge({ username: aboveUser.username, gap: above[1] - myXP })
       }
 
       // Crown
       if (sorted[0]) {
         const crownUID = sorted[0][0]
-        const crownInfo = weekXP.find(r => r.user_id === crownUID)?.users
+        const crownInfo = rankedUserMap[crownUID]
         if (crownInfo) setCrownUser({ ...crownInfo, uid: crownUID })
       }
 
