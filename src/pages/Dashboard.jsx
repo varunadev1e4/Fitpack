@@ -212,13 +212,21 @@ export default function Dashboard() {
       supabase.from('check_ins').select('*').eq('user_id', user.id).eq('date', yesterday).maybeSingle(),
     ])
     setFullUser(u); setStreak(s); setTodayCi(ci); setYesterdayCi(ystd)
+    const { data: teamUsers } = u?.team_id
+      ? await supabase.from('users').select('id, username, avatar_color, avatar_style').eq('team_id', u.team_id)
+      : { data: null }
+    const teamMemberIds = (teamUsers ?? []).map(tm => tm.id)
 
     // Feed
-    const { data: feedRaw } = await supabase
+    const feedQuery = supabase
       .from('check_ins')
       .select('*, users(id, username, avatar_color, avatar_style), shoutout_users:users!check_ins_shoutout_to_fkey(username)')
       .order('created_at', { ascending: false })
       .limit(20)
+
+    const { data: feedRaw } = teamMemberIds.length
+      ? await feedQuery.in('user_id', teamMemberIds)
+      : await feedQuery
 
     if (feedRaw) {
       setFeed(feedRaw)
@@ -232,8 +240,11 @@ export default function Dashboard() {
     }
 
     // Weekly XP for nemesis + crown + squad health
-    const { data: weekXP } = await supabase
+    const weekXPQuery = supabase
       .from('check_ins').select('user_id, xp_earned, users(username, avatar_color)').gte('date', monday)
+    const { data: weekXP } = teamMemberIds.length
+      ? await weekXPQuery.in('user_id', teamMemberIds)
+      : await weekXPQuery
 
     if (weekXP) {
       const totals = {}
@@ -255,8 +266,8 @@ export default function Dashboard() {
         if (crownInfo) setCrownUser({ ...crownInfo, uid: crownUID })
       }
 
-      // Squad health = % of all users who checked in this week
-      const { count: totalUsers } = await supabase.from('users').select('id', { count: 'exact', head: true })
+      // Squad health = % of team users who checked in this week
+      const totalUsers = teamMemberIds.length || 1
       const activeUsers = new Set(weekXP.map(r => r.user_id)).size
       setSquadHealth(Math.round((activeUsers / (totalUsers ?? 1)) * 100))
     }
