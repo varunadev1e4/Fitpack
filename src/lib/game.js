@@ -124,6 +124,33 @@ export function calcWeeklyStreak(streakRow, opts = {}) {
 export function displayStreak(s) { return s?.current_streak ?? 0 }
 export function weekProgress(s)  { return Math.min(s?.current_week_checkins ?? 0, 3) }
 
+// ── Daily Streak ───────────────────────────────────────────
+function isoDayOffset(dateISO, days) {
+  const d = new Date(dateISO)
+  d.setDate(d.getDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+export function calcDailyStreak(streakRow, dateISO = new Date().toISOString().slice(0, 10)) {
+  const prevDate = streakRow?.last_checkin_date
+  const curDaily = streakRow?.current_day_streak ?? 0
+  const bestDaily = streakRow?.longest_day_streak ?? 0
+
+  if (!prevDate) {
+    return { newDailyStreak: 1, newLongestDailyStreak: Math.max(bestDaily, 1), newLastCheckinDate: dateISO }
+  }
+  if (prevDate === dateISO) {
+    return { newDailyStreak: curDaily, newLongestDailyStreak: bestDaily, newLastCheckinDate: dateISO }
+  }
+
+  const continues = isoDayOffset(prevDate, 1) === dateISO
+  const newDailyStreak = continues ? (curDaily + 1) : 1
+  const newLongestDailyStreak = Math.max(bestDaily, newDailyStreak)
+  return { newDailyStreak, newLongestDailyStreak, newLastCheckinDate: dateISO }
+}
+
+export function displayDayStreak(s) { return s?.current_day_streak ?? 0 }
+
 // ── Junk food streak ───────────────────────────────────────
 export function calcJunkStreak(checkIns) {
   // checkIns sorted descending by date

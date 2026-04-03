@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase'
 import {
   calculateXP, BADGE_CHECKS, WORKOUT_TYPES,
   getMondayISO, MAX_REST_DAYS_PER_WEEK, MOODS, getNewMilestones,
-  isComeback, calcJunkStreak
+  isComeback, calcJunkStreak, calcDailyStreak
 } from '../lib/game'
 import { haptic } from '../lib/haptics'
 
@@ -186,10 +186,12 @@ export default function CheckIn() {
       : (baseStreak + (nonRestDays >= 3 ? 1 : 0))
     const newLongest = Math.max(streakRow?.longest_streak ?? 0, newStreak)
     const weekJustCompleted = crossesWeeklyGoal || (streakRow?.current_week_id !== weekId && nonRestDays >= 3)
+    const { newDailyStreak, newLongestDailyStreak, newLastCheckinDate } = calcDailyStreak(streakRow, today)
 
     await supabase.from('streaks').upsert({
       user_id: user.id, current_streak: newStreak, longest_streak: newLongest,
       current_week_id: weekId, current_week_checkins: nonRestDays,
+      current_day_streak: newDailyStreak, longest_day_streak: newLongestDailyStreak, last_checkin_date: newLastCheckinDate,
     }, { onConflict:'user_id' })
 
     const oldXP = existing?.xp_earned ?? 0
