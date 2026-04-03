@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import { getLevelInfo } from '../lib/game'
@@ -32,6 +33,7 @@ function Delta({ v }) {
 const LB_TABS = ['Weekly', 'Monthly', 'All Time', 'Streaks']
 
 function LeaderboardTab({ userId }) {
+  const navigate = useNavigate()
   const [tab, setTab]     = useState(0)
   const [data, setData]   = useState([])
   const [prev, setPrev]   = useState([])
@@ -111,9 +113,13 @@ function LeaderboardTab({ userId }) {
             borderRadius:14, marginBottom:6,
           }}>
             <div style={{width:32,display:'flex',justifyContent:'center'}}><RankIcon rank={rank} /></div>
-            <div className="avatar" style={{background:entry.avatar_color??'#00FF87'}}>{entry.username?.charAt(0).toUpperCase()}</div>
+            <button onClick={() => navigate(`/u/${entry.username}`)} style={{ display:'flex', background:'transparent', border:'none', padding:0, cursor:'pointer' }}>
+              <div className="avatar" style={{background:entry.avatar_color??'#00FF87'}}>{entry.username?.charAt(0).toUpperCase()}</div>
+            </button>
             <div style={{flex:1}}>
-              <div style={{fontWeight:700,fontSize:'.95rem'}}>{entry.username} {isMe && <span style={{color:'var(--accent)',fontSize:'.72rem'}}>(you)</span>}</div>
+              <button onClick={() => navigate(`/u/${entry.username}`)} style={{ fontWeight:700,fontSize:'.95rem', background:'transparent', border:'none', padding:0, cursor:'pointer', color:'inherit' }}>
+                {entry.username} {isMe && <span style={{color:'var(--accent)',fontSize:'.72rem'}}>(you)</span>}
+              </button>
               <div style={{color:'var(--text-dim)',fontSize:'.72rem'}}>{lvl.emoji} {lvl.name}</div>
             </div>
             <div style={{textAlign:'right',display:'flex',flexDirection:'column',alignItems:'flex-end',gap:2}}>
@@ -132,6 +138,7 @@ function LeaderboardTab({ userId }) {
 
 // ── Teams Tab ──────────────────────────────────────
 function TeamsTab({ userId }) {
+  const navigate = useNavigate()
   const [teams, setTeams]   = useState([])
   const [myTeam, setMyTeam] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -212,9 +219,13 @@ function TeamsTab({ userId }) {
           </div>
           <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:12 }}>
             {team.members.slice(0,8).map(m => (
-              <a key={m.id} href={`/u/${m.username}`} style={{ fontSize:'.78rem', color:'var(--text-dim)', textDecoration:'underline' }}>
+              <button
+                key={m.id}
+                onClick={() => navigate(`/u/${m.username}`)}
+                style={{ fontSize:'.78rem', color:'var(--text-dim)', textDecoration:'underline', background:'transparent', border:'none', padding:0, cursor:'pointer' }}
+              >
                 {m.username}
-              </a>
+              </button>
             ))}
             {team.members.length > 8 && <span style={{ color:'var(--text-muted)', fontSize:'.75rem', alignSelf:'center' }}>+{team.members.length-8}</span>}
           </div>
