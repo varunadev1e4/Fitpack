@@ -34,7 +34,7 @@ export function AuthProvider({ children }) {
       const name    = username.trim().toLowerCase()
 
       const { data: existing } = await supabase
-        .from('users').select('*').ilike('username', name).maybeSingle()
+        .from('users').select('*').ilike('username', name).single()
 
       let userData
       if (existing) {
@@ -65,7 +65,7 @@ export function AuthProvider({ children }) {
 
   const refreshUser = useCallback(async () => {
     if (!user) return
-    const { data } = await supabase.from('users').select('xp, avatar_color, team_id, team_change_tokens').eq('id', user.id).single()
+    const { data } = await supabase.from('users').select('xp, avatar_color, team_id').eq('id', user.id).single()
     if (data) {
       const updated = { ...user, ...data }
       localStorage.setItem(SESSION_KEY, JSON.stringify({ user: updated, expires_at: Date.now() + SESSION_TTL_MS }))
