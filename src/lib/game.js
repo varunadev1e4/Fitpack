@@ -55,7 +55,6 @@ export function getActiveSeason() {
   const d    = now.getDate()
 
   if (m === 1  && d <= 15) return { name: 'New Year Blitz',   emoji: '🎆', color: '#00FF87' }
-  if (m === 4  && d <= 14) return { name: 'Ramadan Strong',   emoji: '🌙', color: '#8B5CF6' }
   if (m >= 6  && m <= 8)   return { name: 'Summer Shred',     emoji: '☀️',  color: '#F59E0B' }
   if (m === 10)             return { name: 'October Challenge', emoji: '🎃', color: '#FF6B35' }
   if (m === 12 && d >= 15) return { name: 'Year-End Push',    emoji: '🏁', color: '#06B6D4' }
@@ -97,18 +96,20 @@ export function getPrevMondayISO() {
   return getMondayISO(d)
 }
 
-export function calcWeeklyStreak(streakRow) {
+export function calcWeeklyStreak(streakRow, opts = {}) {
+  const { countsForWeek = true } = opts
   const weekId     = getMondayISO()
   const prevWeekId = getPrevMondayISO()
+  const firstWeekCount = countsForWeek ? 1 : 0
 
   if (!streakRow || !streakRow.current_week_id) {
-    return { newStreak: 0, newLongest: 0, newWeekCheckins: 1, newWeekId: weekId, weekJustCompleted: false }
+    return { newStreak: 0, newLongest: 0, newWeekCheckins: firstWeekCount, newWeekId: weekId, weekJustCompleted: false }
   }
 
   const { current_streak, longest_streak, current_week_id, current_week_checkins } = streakRow
 
   if (current_week_id === weekId) {
-    const newCount          = current_week_checkins + 1
+    const newCount          = current_week_checkins + (countsForWeek ? 1 : 0)
     const weekJustCompleted = newCount === 3
     const newStreak         = weekJustCompleted ? current_streak + 1 : current_streak
     const newLongest        = Math.max(longest_streak, newStreak)
@@ -116,7 +117,7 @@ export function calcWeeklyStreak(streakRow) {
   } else {
     const lastWeekKept = current_week_id === prevWeekId && current_week_checkins >= 3
     const baseStreak   = lastWeekKept ? current_streak : 0
-    return { newStreak: baseStreak, newLongest: longest_streak, newWeekCheckins: 1, newWeekId: weekId, weekJustCompleted: false }
+    return { newStreak: baseStreak, newLongest: longest_streak, newWeekCheckins: firstWeekCount, newWeekId: weekId, weekJustCompleted: false }
   }
 }
 
@@ -242,6 +243,20 @@ export function calcCorrelations(checkIns) {
       insight: `On high-hydration days you average ${sleepHigh.toFixed(1)}h sleep vs ${sleepLow.toFixed(1)}h on low-hydration days.`,
       icon: '💧',
     })
+  }
+
+  const highMealDays = n.filter(c => c.meals >= 3)
+  const lowMealDays = n.filter(c => c.meals < 3)
+  if (highMealDays.length > 2 && lowMealDays.length > 2) {
+    const avgMood = (rows) => rows.reduce((s, c) => s + ({ dead: 1, tired: 2, meh: 3, good: 4, fire: 5 }[c.mood] || 0), 0) / rows.length
+    const mHigh = avgMood(highMealDays)
+    const mLow = avgMood(lowMealDays)
+    if (mHigh > 0 && mLow > 0) {
+      results.push({
+        insight: `On 3+ meal days your mood score averages ${mHigh.toFixed(1)}/5 vs ${mLow.toFixed(1)}/5 on lower-meal days.`,
+        icon: '🍽️',
+      })
+    }
   }
 
   return results

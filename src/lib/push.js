@@ -29,7 +29,11 @@ export async function maybeFireReminder(hasCheckedInToday) {
   if (Notification.permission !== 'granted') return
   const now = new Date()
   const [h, m] = getReminderTime().split(':').map(Number)
-  if (now.getHours() === h && now.getMinutes() >= m && now.getMinutes() < m + 5) {
+  const todayKey = now.toISOString().slice(0, 10)
+  const firedKey = localStorage.getItem('fitpack_reminder_last_fired')
+  if (firedKey === todayKey) return
+  if (now.getHours() === h && now.getMinutes() >= m) {
     sendLocalNotification("⏰ FitPack Reminder", "You haven't logged today yet! Don't break your streak 🔥")
+    localStorage.setItem('fitpack_reminder_last_fired', todayKey)
   }
 }

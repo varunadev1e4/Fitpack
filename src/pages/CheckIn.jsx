@@ -3,8 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import {
-  calculateXP, calcWeeklyStreak, BADGE_CHECKS, WORKOUT_TYPES,
-  getMondayISO, MAX_REST_DAYS_PER_WEEK, MOODS, getNewMilestones,
+  calculateXP, BADGE_CHECKS, WORKOUT_TYPES,
+  getMondayISO, getPrevMondayISO, MAX_REST_DAYS_PER_WEEK, MOODS, getNewMilestones,
   isComeback, calcJunkStreak
 } from '../lib/game'
 import { haptic } from '../lib/haptics'
@@ -106,7 +106,7 @@ export default function CheckIn() {
       const sunday = new Date(new Date(monday).getTime() + 6 * 86400000).toISOString().slice(0, 10)
 
       const [{ data: existingCI }, { data: weekCIs }, { data: recentCIs }, { data: members }] = await Promise.all([
-        supabase.from('check_ins').select('*').eq('user_id', user.id).eq('date', today).single(),
+        supabase.from('check_ins').select('*').eq('user_id', user.id).eq('date', today).maybeSingle(),
         supabase.from('check_ins').select('date, is_rest_day').eq('user_id', user.id).gte('date', monday).lte('date', sunday),
         supabase.from('check_ins').select('date').eq('user_id', user.id).order('date', { ascending: false }).limit(10),
         supabase.from('users').select('id, username').neq('id', user.id).order('username').limit(30),
@@ -152,8 +152,15 @@ export default function CheckIn() {
     haptic('medium')
 
     const xpResult  = calculateXP(form, { comeback: comebackFlag && !existing })
-    const streakRow = (await supabase.from('streaks').select('*').eq('user_id', user.id).single()).data
-    const { newStreak, newLongest, newWeekCheckins, newWeekId, weekJustCompleted } = calcWeeklyStreak(streakRow)
+    const streakRow = (await supabase.from('streaks').select('*').eq('user_id', user.id).maybeSingle()).data
+    const weekId = getMondayISO()
+    const prevWeekId = getPrevMondayISO()
+    const prevWeekCompleted = streakRow?.current_week_id === prevWeekId && (streakRow?.current_week_checkins ?? 0) >= 3
+    const wasCurrentWeek = streakRow?.current_week_id === weekId
+    const oldWeekCount = wasCurrentWeek ? (streakRow?.current_week_checkins ?? 0) : 0
+    const baseStreak = wasCurrentWeek
+      ? (streakRow?.current_streak ?? 0)
+      : (prevWeekCompleted ? (streakRow?.current_streak ?? 0) : 0)
 
     await supabase.from('check_ins').upsert({
       user_id: user.id, date: today,
@@ -166,9 +173,22 @@ export default function CheckIn() {
       xp_earned: xpResult.total,
     }, { onConflict:'user_id,date' })
 
+    const sunday = new Date(new Date(weekId).getTime() + 6 * 86400000).toISOString().slice(0, 10)
+    const { data: weeklyLogs } = await supabase
+      .from('check_ins')
+      .select('date, is_rest_day')
+      .eq('user_id', user.id)
+      .gte('date', weekId)
+      .lte('date', sunday)
+    const uniqueActiveDays = new Set((weeklyLogs ?? []).filter(r => !r.is_rest_day).map(r => r.date))
+    const newWeekCheckins = uniqueActiveDays.size
+    const weekJustCompleted = oldWeekCount < 3 && newWeekCheckins >= 3
+    const newStreak = baseStreak + (weekJustCompleted ? 1 : 0)
+    const newLongest = Math.max(streakRow?.longest_streak ?? 0, newStreak)
+
     await supabase.from('streaks').upsert({
       user_id: user.id, current_streak: newStreak, longest_streak: newLongest,
-      current_week_id: newWeekId, current_week_checkins: newWeekCheckins,
+      current_week_id: weekId, current_week_checkins: newWeekCheckins,
     }, { onConflict:'user_id' })
 
     const oldXP = existing?.xp_earned ?? 0
@@ -180,7 +200,7 @@ export default function CheckIn() {
     const milestones = getNewMilestones(preXP, newXP)
     let milestoneBonus = 0
     for (const m of milestones) {
-      const { data: already } = await supabase.from('milestone_log').select('id').eq('user_id', user.id).eq('milestone', m.threshold).single()
+      const { data: already } = await supabase.from('milestone_log').select('id').eq('user_id', user.id).eq('milestone', m.threshold).maybeSingle()
       if (!already) {
         milestoneBonus += m.bonus
         await supabase.from('milestone_log').insert({ user_id: user.id, milestone: m.threshold })
@@ -252,7 +272,7 @@ export default function CheckIn() {
       if (ch.metric === 'meals')   prog = form.meals
       if (ch.metric === 'sleep' && form.sleep_hours >= 7) prog = 1
       if (prog > 0) {
-        const { data: cp } = await supabase.from('challenge_progress').select('*').eq('challenge_id', ch.id).eq('user_id', user.id).single()
+        const { data: cp } = await supabase.from('challenge_progress').select('*').eq('challenge_id', ch.id).eq('user_id', user.id).maybeSingle()
         await supabase.from('challenge_progress').upsert({ challenge_id: ch.id, user_id: user.id, progress: (cp?.progress ?? 0) + prog }, { onConflict:'challenge_id,user_id' })
       }
     }

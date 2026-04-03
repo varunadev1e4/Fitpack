@@ -18,13 +18,13 @@ export default function PublicProfile() {
     async function load() {
       const { data: u } = await supabase
         .from('users').select('id, username, xp, avatar_color, avatar_style, team_id')
-        .ilike('username', username).single()
+        .ilike('username', username).maybeSingle()
 
       if (!u) { setNotFound(true); setLoading(false); return }
       setProfile(u)
 
       const [{ data: s }, { data: ub }, { data: cis }] = await Promise.all([
-        supabase.from('streaks').select('*').eq('user_id', u.id).single(),
+        supabase.from('streaks').select('*').eq('user_id', u.id).maybeSingle(),
         supabase.from('user_badges').select('*, badges(*)').eq('user_id', u.id),
         supabase.from('check_ins').select('*').eq('user_id', u.id).order('date', { ascending: false }).limit(90),
       ])

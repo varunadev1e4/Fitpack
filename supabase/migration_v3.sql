@@ -15,6 +15,9 @@ alter table users     add column if not exists is_admin          boolean default
 alter table users     add column if not exists onboarded         boolean default false;
 alter table users     add column if not exists public_goal       text    default null;
 alter table users     add column if not exists public_goal_date  date    default null;
+alter table users     add column if not exists accountability_buddy_id uuid references users(id) on delete set null;
+alter table users     add column if not exists team_change_tokens integer default 0;
+create unique index if not exists users_accountability_buddy_unique on users(accountability_buddy_id) where accountability_buddy_id is not null;
 
 -- Squad milestones (collective)
 create table if not exists squad_milestones (
@@ -96,11 +99,43 @@ create table if not exists milestone_log (
   unique(user_id, milestone)
 );
 
+-- XP purchases / consumables
+create table if not exists xp_purchases (
+  id          uuid default gen_random_uuid() primary key,
+  user_id     uuid references users(id) on delete cascade,
+  item_key    text not null,
+  item_name   text not null,
+  xp_spent    integer not null check (xp_spent > 0),
+  created_at  timestamptz default now()
+);
+
+-- Weight logs
+create table if not exists weight_logs (
+  id          uuid default gen_random_uuid() primary key,
+  user_id     uuid references users(id) on delete cascade,
+  date        date not null default current_date,
+  weight_kg   numeric(5,2) not null check (weight_kg > 0),
+  note        text,
+  created_at  timestamptz default now(),
+  unique(user_id, date)
+);
+
+-- Accountability buddy requests
+create table if not exists buddy_requests (
+  id           uuid default gen_random_uuid() primary key,
+  requester_id uuid references users(id) on delete cascade,
+  target_id    uuid references users(id) on delete cascade,
+  status       text not null default 'pending' check (status in ('pending','accepted','rejected')),
+  created_at   timestamptz default now(),
+  unique(requester_id, target_id)
+);
+
 -- RLS for new tables
 do $$ declare t text; begin
   for t in select unnest(array[
     'squad_milestones','squad_posts','weekly_goals','weekly_crown',
-    'spin_results','invite_links','comeback_log','milestone_log'
+    'spin_results','invite_links','comeback_log','milestone_log',
+    'xp_purchases','weight_logs','buddy_requests'
   ]) loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists "open" on %I', t);
