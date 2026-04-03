@@ -102,6 +102,8 @@ function StatsTab({ user, fullUser, streak, stats, checkIns }) {
         <CalendarHeatmap checkIns={checkIns} />
       </div>
 
+      <WeightTracker userId={user.id} />
+
       <div className="card" style={{ marginBottom:12 }}>
         <h3 style={{ fontFamily:'var(--font-d)', fontWeight:800, textTransform:'uppercase', fontSize:'1rem', marginBottom:14 }}>Level Roadmap</h3>
         {LEVELS.map(l => {
@@ -121,6 +123,41 @@ function StatsTab({ user, fullUser, streak, stats, checkIns }) {
         })}
       </div>
     </>
+  )
+}
+
+function WeightTracker({ userId }) {
+  const [rows, setRows] = useState([])
+  const [weight, setWeight] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function load() {
+    const { data } = await supabase.from('weight_logs').select('*').eq('user_id', userId).order('date', { ascending: true }).limit(60)
+    setRows(data ?? [])
+  }
+
+  useEffect(() => { load() }, [userId])
+
+  async function add() {
+    if (!weight) return
+    setSaving(true)
+    await supabase.from('weight_logs').upsert({ user_id: userId, date: new Date().toISOString().slice(0, 10), weight_kg: +weight }, { onConflict: 'user_id,date' })
+    setWeight('')
+    await load()
+    setSaving(false)
+  }
+
+  const chartData = rows.map((r, i) => ({ value: Number(r.weight_kg), label: i % 7 === 0 ? r.date.slice(5) : '' }))
+
+  return (
+    <div className="card" style={{ marginBottom:12 }}>
+      <h3 style={{ fontFamily:'var(--font-d)', fontWeight:800, textTransform:'uppercase', fontSize:'1rem', marginBottom:12 }}>⚖️ Weight Tracker</h3>
+      <div style={{ display:'flex', gap:8, marginBottom:12 }}>
+        <input className="input" type="number" step="0.1" value={weight} onChange={e => setWeight(e.target.value)} placeholder="Today's weight (kg)" />
+        <button className="btn btn-ghost btn-sm" style={{ width:'auto' }} onClick={add} disabled={saving || !weight}>Save</button>
+      </div>
+      {chartData.length ? <LineChart data={chartData} color="var(--gold)" height={90} /> : <p style={{ color:'var(--text-dim)', fontSize:'.8rem' }}>Log your first weight entry.</p>}
+    </div>
   )
 }
 
@@ -376,7 +413,7 @@ function MonthlyReview({ userId, checkIns }) {
 }
 
 // ── Settings Tab ───────────────────────────────────
-function SettingsTab({ user, fullUser, changePin, logout }) {
+function SettingsTab({ user, fullUser, changePin, logout, refreshUser }) {
   const { theme, toggleTheme }  = useTheme()
   const [curPin, setCurPin]     = useState('')
   const [newPin, setNewPin]     = useState('')
@@ -389,6 +426,27 @@ function SettingsTab({ user, fullUser, changePin, logout }) {
   const month = new Date().toISOString().slice(0, 7)
   const [penaltyAmt, setPenaltyAmt] = useState('')
   const [penaltyMsg, setPenaltyMsg] = useState(null)
+  const [shopBusy, setShopBusy] = useState(false)
+  const [buddyUsers, setBuddyUsers] = useState([])
+  const [buddyId, setBuddyId] = useState('')
+  const [buddyReqs, setBuddyReqs] = useState([])
+
+  const SHOP_ITEMS = [
+    { key: 'daily_shield', name: 'Daily Shield', xp: 250 },
+    { key: 'junk_pass', name: 'Junk Pass (1/week)', xp: 500 },
+    { key: 'weekly_shield', name: 'Weekly Shield', xp: 1000 },
+    { key: 'team_change_token', name: 'Team Change Token', xp: 750 },
+  ]
+
+  useEffect(() => {
+    supabase.from('users').select('id,username').neq('id', user.id).order('username').then(({ data }) => setBuddyUsers(data ?? []))
+    loadBuddyRequests()
+  }, [user.id])
+
+  async function loadBuddyRequests() {
+    const { data } = await supabase.from('buddy_requests').select('*, users!buddy_requests_requester_id_fkey(username)').eq('target_id', user.id).eq('status', 'pending')
+    setBuddyReqs(data ?? [])
+  }
 
   async function handlePinChange(e) {
     e.preventDefault()
@@ -412,6 +470,33 @@ function SettingsTab({ user, fullUser, changePin, logout }) {
     await supabase.from('penalty_pot').upsert({ user_id:user.id, month, amount:+penaltyAmt }, { onConflict:'user_id,month' })
     setPenaltyMsg('Logged! ✅')
     setTimeout(() => setPenaltyMsg(null), 2000)
+  }
+
+  async function buyItem(item) {
+    if ((fullUser?.xp ?? 0) < item.xp) return
+    setShopBusy(true)
+    const remaining = (fullUser?.xp ?? 0) - item.xp
+    const updates = { xp: remaining }
+    if (item.key === 'team_change_token') updates.team_change_tokens = (fullUser?.team_change_tokens ?? 0) + 1
+    await supabase.from('users').update(updates).eq('id', user.id)
+    await supabase.from('xp_purchases').insert({ user_id: user.id, item_key: item.key, item_name: item.name, xp_spent: item.xp })
+    await refreshUser()
+    setShopBusy(false)
+  }
+
+  async function requestBuddy() {
+    if (!buddyId) return
+    await supabase.from('buddy_requests').upsert({ requester_id: user.id, target_id: buddyId, status: 'pending' }, { onConflict: 'requester_id,target_id' })
+    setBuddyId('')
+  }
+
+  async function actOnBuddyRequest(req, accept) {
+    await supabase.from('buddy_requests').update({ status: accept ? 'accepted' : 'rejected' }).eq('id', req.id)
+    if (accept) {
+      await supabase.from('users').update({ accountability_buddy_id: req.requester_id }).eq('id', user.id)
+      await supabase.from('users').update({ accountability_buddy_id: user.id }).eq('id', req.requester_id)
+    }
+    loadBuddyRequests()
   }
 
   return (
@@ -486,6 +571,39 @@ function SettingsTab({ user, fullUser, changePin, logout }) {
         )}
       </div>
 
+      <div className="card">
+        <h3 style={{ fontFamily:'var(--font-d)', fontWeight:800, fontSize:'1rem', marginBottom:12 }}>🛒 XP Shop</h3>
+        {SHOP_ITEMS.map(item => (
+          <div key={item.key} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
+            <div>
+              <div style={{ fontWeight:700, fontSize:'.9rem' }}>{item.name}</div>
+              <div style={{ color:'var(--text-dim)', fontSize:'.72rem' }}>{item.xp} XP</div>
+            </div>
+            <button className="btn btn-ghost btn-xs" onClick={() => buyItem(item)} disabled={shopBusy || (fullUser?.xp ?? 0) < item.xp}>Buy</button>
+          </div>
+        ))}
+      </div>
+
+      <div className="card">
+        <h3 style={{ fontFamily:'var(--font-d)', fontWeight:800, fontSize:'1rem', marginBottom:12 }}>🤝 Accountability Buddy</h3>
+        <div style={{ display:'flex', gap:8, marginBottom:8 }}>
+          <select className="input" value={buddyId} onChange={e => setBuddyId(e.target.value)}>
+            <option value="">Select member</option>
+            {buddyUsers.map(u => <option key={u.id} value={u.id}>{u.username}</option>)}
+          </select>
+          <button className="btn btn-ghost btn-sm" style={{ width:'auto' }} onClick={requestBuddy}>Send</button>
+        </div>
+        {!!buddyReqs.length && buddyReqs.map(req => (
+          <div key={req.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 0' }}>
+            <span style={{ fontSize:'.85rem' }}>{req.users?.username} wants to be your buddy.</span>
+            <div style={{ display:'flex', gap:6 }}>
+              <button className="btn btn-primary btn-xs" onClick={() => actOnBuddyRequest(req, true)}>Accept</button>
+              <button className="btn btn-ghost btn-xs" onClick={() => actOnBuddyRequest(req, false)}>Reject</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
       {/* Penalty Pot */}
       <div className="card">
         <h3 style={{ fontFamily:'var(--font-d)', fontWeight:800, fontSize:'1rem', marginBottom:4 }}>💰 Penalty Pot</h3>
@@ -504,7 +622,7 @@ function SettingsTab({ user, fullUser, changePin, logout }) {
 
 // ── Main ───────────────────────────────────────────
 export default function Profile() {
-  const { user, logout, changePin } = useAuth()
+  const { user, logout, changePin, refreshUser } = useAuth()
   const [tab, setTab]       = useState(0)
   const [fullUser, setFU]   = useState(null)
   const [streak, setStreak] = useState(null)
@@ -554,7 +672,7 @@ export default function Profile() {
           )}
           {tab===2 && <BadgesTab userId={user.id} />}
           {tab===3 && <PRsTab userId={user.id} />}
-          {tab===4 && <SettingsTab user={user} fullUser={fullUser} changePin={changePin} logout={logout} />}
+          {tab===4 && <SettingsTab user={user} fullUser={fullUser} changePin={changePin} logout={logout} refreshUser={refreshUser} />}
         </div>
       )}
     </div>

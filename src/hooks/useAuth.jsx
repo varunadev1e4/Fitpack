@@ -10,10 +10,19 @@ async function sha256(str) {
 }
 
 const SESSION_KEY = 'fitpack_user_v2'
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(SESSION_KEY)) } catch { return null }
+    try {
+      const raw = JSON.parse(localStorage.getItem(SESSION_KEY))
+      if (!raw) return null
+      if (raw.expires_at && Date.now() > raw.expires_at) {
+        localStorage.removeItem(SESSION_KEY)
+        return null
+      }
+      return raw.user ?? raw
+    } catch { return null }
   })
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState(null)
@@ -41,8 +50,8 @@ export function AuthProvider({ children }) {
         userData = created
       }
 
-      const session = { id: userData.id, username: userData.username, xp: userData.xp, avatar_color: userData.avatar_color, team_id: userData.team_id }
-      localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+      const session = { id: userData.id, username: userData.username, xp: userData.xp, avatar_color: userData.avatar_color, team_id: userData.team_id, team_change_tokens: userData.team_change_tokens ?? 0 }
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ user: session, expires_at: Date.now() + SESSION_TTL_MS }))
       setUser(session)
       return true
     } catch (e) { setError(e.message); return false }
@@ -59,7 +68,7 @@ export function AuthProvider({ children }) {
     const { data } = await supabase.from('users').select('xp, avatar_color, team_id').eq('id', user.id).single()
     if (data) {
       const updated = { ...user, ...data }
-      localStorage.setItem(SESSION_KEY, JSON.stringify(updated))
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ user: updated, expires_at: Date.now() + SESSION_TTL_MS }))
       setUser(updated)
     }
   }, [user])

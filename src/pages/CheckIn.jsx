@@ -106,7 +106,7 @@ export default function CheckIn() {
       const sunday = new Date(new Date(monday).getTime() + 6 * 86400000).toISOString().slice(0, 10)
 
       const [{ data: existingCI }, { data: weekCIs }, { data: recentCIs }, { data: members }] = await Promise.all([
-        supabase.from('check_ins').select('*').eq('user_id', user.id).eq('date', today).single(),
+        supabase.from('check_ins').select('*').eq('user_id', user.id).eq('date', today).maybeSingle(),
         supabase.from('check_ins').select('date, is_rest_day').eq('user_id', user.id).gte('date', monday).lte('date', sunday),
         supabase.from('check_ins').select('date').eq('user_id', user.id).order('date', { ascending: false }).limit(10),
         supabase.from('users').select('id, username').neq('id', user.id).order('username').limit(30),
@@ -152,8 +152,10 @@ export default function CheckIn() {
     haptic('medium')
 
     const xpResult  = calculateXP(form, { comeback: comebackFlag && !existing })
-    const streakRow = (await supabase.from('streaks').select('*').eq('user_id', user.id).single()).data
-    const { newStreak, newLongest, newWeekCheckins, newWeekId, weekJustCompleted } = calcWeeklyStreak(streakRow)
+    const streakRow = (await supabase.from('streaks').select('*').eq('user_id', user.id).maybeSingle()).data
+    const isNewDailyLog = !existing
+    const countsForWeek = isNewDailyLog && !form.is_rest_day
+    const { newStreak, newLongest, newWeekCheckins, newWeekId, weekJustCompleted } = calcWeeklyStreak(streakRow, { countsForWeek })
 
     await supabase.from('check_ins').upsert({
       user_id: user.id, date: today,

@@ -44,15 +44,19 @@ function LeaderboardTab({ userId }) {
   }, [tab])
 
   async function loadWeekly() {
-    const [cur, prv] = await Promise.all([
-      supabase.from('check_ins').select('user_id, xp_earned, users(id,username,avatar_color,xp)').gte('date', getMondayISO(0)),
+    const [{ data: users }, cur, prv] = await Promise.all([
+      supabase.from('users').select('id,username,avatar_color,xp'),
+      supabase.from('check_ins').select('user_id, xp_earned').gte('date', getMondayISO(0)),
       supabase.from('check_ins').select('user_id, xp_earned').gte('date', getMondayISO(1)).lt('date', getMondayISO(0)),
     ])
-    return [aggregate(cur.data, 'XP this week'), aggregate(prv.data)]
+    return [aggregate(cur.data, users, 'XP this week'), aggregate(prv.data, users)]
   }
   async function loadMonthly() {
-    const { data } = await supabase.from('check_ins').select('user_id, xp_earned, users(id,username,avatar_color,xp)').gte('date', getMonthStart())
-    return [aggregate(data, 'XP this month'), []]
+    const [{ data: users }, { data }] = await Promise.all([
+      supabase.from('users').select('id,username,avatar_color,xp'),
+      supabase.from('check_ins').select('user_id, xp_earned').gte('date', getMonthStart()),
+    ])
+    return [aggregate(data, users, 'XP this month'), []]
   }
   async function loadAllTime() {
     const { data } = await supabase.from('users').select('id,username,xp,avatar_color').order('xp',{ascending:false}).limit(50)
@@ -63,13 +67,17 @@ function LeaderboardTab({ userId }) {
     return [(data??[]).map(r => ({...r.users, value:r.current_streak??0, unit:'week streak', streak:r.current_streak})), []]
   }
 
-  function aggregate(rows, unit='XP') {
-    if (!rows) return []
+  function aggregate(rows, users = [], unit='XP') {
+    if (!rows) return (users ?? []).map(u => ({ ...u, value: 0, unit }))
+    const userMap = Object.fromEntries((users ?? []).map(u => [u.id, u]))
     const map = {}
     rows.forEach(r => {
       const uid = r.user_id ?? r.id
-      if (!map[uid]) map[uid] = { ...r.users, value:0, unit }
+      if (!map[uid]) map[uid] = { ...(userMap[uid] ?? {}), id: uid, value:0, unit }
       map[uid].value += r.xp_earned ?? 0
+    })
+    ;(users ?? []).forEach(u => {
+      if (!map[u.id]) map[u.id] = { ...u, value: 0, unit }
     })
     return Object.values(map).sort((a,b) => b.value - a.value)
   }
@@ -130,7 +138,7 @@ function TeamsTab({ userId }) {
 
   useEffect(() => {
     async function load() {
-      const { data: u } = await supabase.from('users').select('team_id').eq('id', userId).single()
+      const { data: u } = await supabase.from('users').select('team_id,team_change_tokens').eq('id', userId).single()
       setMyTeam(u?.team_id)
 
       const { data: ts } = await supabase.from('teams').select('*')
@@ -157,7 +165,14 @@ function TeamsTab({ userId }) {
   }, [userId])
 
   async function joinTeam(teamId) {
-    await supabase.from('users').update({ team_id: teamId }).eq('id', userId)
+    const { data: u } = await supabase.from('users').select('team_id,team_change_tokens').eq('id', userId).single()
+    if (u?.team_id && u.team_id !== teamId && (u.team_change_tokens ?? 0) <= 0) {
+      alert('You need a Team Change Token to switch teams.')
+      return
+    }
+    const updates = { team_id: teamId }
+    if (u?.team_id && u.team_id !== teamId) updates.team_change_tokens = (u.team_change_tokens ?? 0) - 1
+    await supabase.from('users').update(updates).eq('id', userId)
     setMyTeam(teamId)
     setTeams(prev => prev.map(t => ({
       ...t,
@@ -172,7 +187,7 @@ function TeamsTab({ userId }) {
   return (
     <>
       <p style={{ color:'var(--text-dim)', fontSize:'.82rem', marginBottom:16 }}>
-        Teams compete on weekly XP. Join one to represent! 🏆
+        Teams compete on weekly XP. First join is free; switching requires a Team Change Token.
       </p>
       {teams.map((team, i) => (
         <div key={team.id} className={`card ${team.id === myTeam ? 'accent-border' : ''}`} style={{ marginBottom:12 }}>
@@ -195,13 +210,13 @@ function TeamsTab({ userId }) {
               <div style={{ color:'var(--text-muted)', fontSize:'.65rem', textTransform:'uppercase' }}>XP this week</div>
             </div>
           </div>
-          <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginBottom:12 }}>
-            {team.members.slice(0,10).map(m => (
-              <div key={m.id} className="avatar" style={{ width:28, height:28, fontSize:'.75rem', background:m.avatar_color??'#00FF87' }}>
-                {m.username?.charAt(0).toUpperCase()}
-              </div>
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:12 }}>
+            {team.members.slice(0,8).map(m => (
+              <a key={m.id} href={`/u/${m.username}`} style={{ fontSize:'.78rem', color:'var(--text-dim)', textDecoration:'underline' }}>
+                {m.username}
+              </a>
             ))}
-            {team.members.length > 10 && <span style={{ color:'var(--text-muted)', fontSize:'.75rem', alignSelf:'center' }}>+{team.members.length-10}</span>}
+            {team.members.length > 8 && <span style={{ color:'var(--text-muted)', fontSize:'.75rem', alignSelf:'center' }}>+{team.members.length-8}</span>}
           </div>
           {team.id !== myTeam && (
             <button className="btn btn-ghost btn-sm" style={{ width:'auto' }} onClick={() => joinTeam(team.id)}>
@@ -226,7 +241,10 @@ function TrashTalkTab({ userId, username, avatarColor }) {
     load()
     // Realtime subscription
     const sub = supabase.channel('trash')
-      .on('postgres_changes', { event:'INSERT', schema:'public', table:'trash_talk' }, () => load())
+      .on('postgres_changes', { event:'INSERT', schema:'public', table:'trash_talk' }, payload => {
+        setPosts(prev => [...prev, payload.new])
+        load()
+      })
       .subscribe()
     return () => supabase.removeChannel(sub)
   }, [])
@@ -245,7 +263,15 @@ function TrashTalkTab({ userId, username, avatarColor }) {
   async function post() {
     if (!text.trim()) return
     setPosting(true)
-    await supabase.from('trash_talk').insert({ user_id: userId, content: text.trim() })
+    const msg = text.trim()
+    await supabase.from('trash_talk').insert({ user_id: userId, content: msg })
+    setPosts(prev => [...prev, {
+      id: `tmp-${Date.now()}`,
+      user_id: userId,
+      content: msg,
+      created_at: new Date().toISOString(),
+      users: { username, avatar_color: avatarColor },
+    }])
     setText('')
     setPosting(false)
   }

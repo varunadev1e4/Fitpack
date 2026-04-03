@@ -13,6 +13,7 @@ import Battles from './pages/Battles'
 import Profile from './pages/Profile'
 import PublicProfile from './pages/PublicProfile'
 import Admin from './pages/Admin'
+import { maybeFireReminder } from './lib/push'
 
 function Protected({ children }) {
   const { user } = useAuth()
@@ -47,9 +48,22 @@ function AppShell() {
   useEffect(() => {
     if (!user) return
     // Check if user needs onboarding
-    supabase.from('users').select('onboarded').eq('id', user.id).single()
+    supabase.from('users').select('onboarded').eq('id', user.id).maybeSingle()
       .then(({ data }) => { if (data && !data.onboarded) setShowOnboarding(true) })
   }, [user])
+
+  useEffect(() => {
+    if (!user) return
+    let timer
+    async function tick() {
+      const today = new Date().toISOString().slice(0, 10)
+      const { data } = await supabase.from('check_ins').select('id').eq('user_id', user.id).eq('date', today).maybeSingle()
+      await maybeFireReminder(!!data)
+    }
+    tick()
+    timer = setInterval(tick, 60000)
+    return () => clearInterval(timer)
+  }, [user?.id])
 
   return (
     <ThemeProvider userId={user?.id}>
