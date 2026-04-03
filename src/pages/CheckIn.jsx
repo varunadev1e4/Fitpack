@@ -153,14 +153,9 @@ export default function CheckIn() {
 
     const xpResult  = calculateXP(form, { comeback: comebackFlag && !existing })
     const streakRow = (await supabase.from('streaks').select('*').eq('user_id', user.id).maybeSingle()).data
-    const weekId = getMondayISO()
-    const prevWeekId = getPrevMondayISO()
-    const prevWeekCompleted = streakRow?.current_week_id === prevWeekId && (streakRow?.current_week_checkins ?? 0) >= 3
-    const wasCurrentWeek = streakRow?.current_week_id === weekId
-    const oldWeekCount = wasCurrentWeek ? (streakRow?.current_week_checkins ?? 0) : 0
-    const baseStreak = wasCurrentWeek
-      ? (streakRow?.current_streak ?? 0)
-      : (prevWeekCompleted ? (streakRow?.current_streak ?? 0) : 0)
+    const isNewDailyLog = !existing
+    const countsForWeek = isNewDailyLog && !form.is_rest_day
+    const { newStreak, newLongest, newWeekCheckins, newWeekId, weekJustCompleted } = calcWeeklyStreak(streakRow, { countsForWeek })
 
     await supabase.from('check_ins').upsert({
       user_id: user.id, date: today,

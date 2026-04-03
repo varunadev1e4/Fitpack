@@ -217,9 +217,9 @@ function TeamsTab({ userId, navigate }) {
           </div>
           <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:12 }}>
             {team.members.slice(0,8).map(m => (
-              <button key={m.id} onClick={() => navigate(`/u/${m.username}`)} style={{ fontSize:'.78rem', color:'var(--text-dim)', textDecoration:'underline' }}>
+              <a key={m.id} href={`/u/${m.username}`} style={{ fontSize:'.78rem', color:'var(--text-dim)', textDecoration:'underline' }}>
                 {m.username}
-              </button>
+              </a>
             ))}
             {team.members.length > 8 && <span style={{ color:'var(--text-muted)', fontSize:'.75rem', alignSelf:'center' }}>+{team.members.length-8}</span>}
           </div>

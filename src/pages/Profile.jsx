@@ -486,15 +486,6 @@ function SettingsTab({ user, fullUser, changePin, logout, refreshUser }) {
 
   async function requestBuddy() {
     if (!buddyId) return
-    const [{ data: me }, { data: target }, { data: existingForTarget }] = await Promise.all([
-      supabase.from('users').select('accountability_buddy_id').eq('id', user.id).single(),
-      supabase.from('users').select('accountability_buddy_id').eq('id', buddyId).single(),
-      supabase.from('users').select('id').eq('accountability_buddy_id', buddyId).maybeSingle(),
-    ])
-    if (me?.accountability_buddy_id || target?.accountability_buddy_id || existingForTarget?.id) {
-      alert('Buddy request blocked: one of you already has a buddy.')
-      return
-    }
     await supabase.from('buddy_requests').upsert({ requester_id: user.id, target_id: buddyId, status: 'pending' }, { onConflict: 'requester_id,target_id' })
     setBuddyId('')
   }
@@ -502,15 +493,6 @@ function SettingsTab({ user, fullUser, changePin, logout, refreshUser }) {
   async function actOnBuddyRequest(req, accept) {
     await supabase.from('buddy_requests').update({ status: accept ? 'accepted' : 'rejected' }).eq('id', req.id)
     if (accept) {
-      const [{ data: me }, { data: requester }, { data: thirdParty }] = await Promise.all([
-        supabase.from('users').select('accountability_buddy_id').eq('id', user.id).single(),
-        supabase.from('users').select('accountability_buddy_id').eq('id', req.requester_id).single(),
-        supabase.from('users').select('id').eq('accountability_buddy_id', req.requester_id).maybeSingle(),
-      ])
-      if (me?.accountability_buddy_id || requester?.accountability_buddy_id || thirdParty?.id) {
-        alert('Cannot accept: buddy relationship already exists.')
-        return
-      }
       await supabase.from('users').update({ accountability_buddy_id: req.requester_id }).eq('id', user.id)
       await supabase.from('users').update({ accountability_buddy_id: user.id }).eq('id', req.requester_id)
     }
